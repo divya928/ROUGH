@@ -1,0 +1,378 @@
+---
+title: "Untitled"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: "2023-09-30"
+---
+
+---
+
+```{r}
+#Install required packages 
+library(caret) #To split the dataset in training, validation, and testing.
+library(class) #For classification of data
+library(e1071) #For easy implementation of SVM
+library(dplyr) #To select a subset of variables
+library(readr) #To read files
+library(gmodels) #To create the confusion matrix
+
+#read in CSV file for training and testing 
+ ubank <- read.csv("C:/Users/spadd/OneDrive/Desktop/UniversalBank.csv")
+ dim(ubank)
+ t(t(names(ubank)))
+```
+
+```{r}
+#SEEING THE DATA FRAME'S STRUCTURE
+str(ubank)
+#DESCRIPTIVE STATISTICS
+summary(ubank)
+```
+
+
+```{r}
+#DROP ID AND ZIP 
+ubank <- ubank[,-c(1,5)]
+```
+
+```{r}
+#ONLY EDUCATION NEEDS TO BE CONVERTED INTO FACTOR
+ubank$Education <- as.factor(ubank$Education)
+```
+
+```{r}
+#After reviewing data, it appears all categorical variables are in binary form except for EDUCATION.Therefore, we will need to convert to dummy before implementing k-NN.
+
+ubank$Education <- as.factor(ubank$Education)
+dummy_model <- dummyVars(~., data=ubank) #this create dummy groups
+head(predict(dummy_model,ubank))
+ubank1 <- as.data.frame(predict(dummy_model, ubank))
+```
+
+```{r}
+#We need to ensure that we are getting the same sample if we return the code
+
+set.seed(1)
+train_index <- sample(row.names(ubank1), 0.6*dim(ubank1)[1])
+validate_index <- setdiff(row.names(ubank1), train_index)
+train_ubank <- ubank1[train_index,]
+Validate_ubank <- ubank1[validate_index,]
+t(t(names(train_ubank)))
+```
+
+```{r}
+#SPLITTING DATA INTO 60 PERCENT TRAINING AND 40 PERCENT VALIDATION
+library(caTools)
+set.seed(1)
+split <- sample.split(ubank1, SplitRatio = 0.6)
+training_set <- subset(ubank1, split == TRUE)
+validation_set <- subset(ubank1, split == FALSE)
+
+#PRINTING THE SIZES OF TRAINING AND VALIDATION SETS
+print(paste("The size of the training set is:", nrow(training_set)))
+print(paste("The size of the validation set is:", nrow(validation_set)))
+```
+
+```{R}
+#Define success level of personal loan as 1. In "R" first level is failure and second is success. In this case, the default is set to success.  
+ubank1$Personal.Loan <- as.factor(ubank1$Personal.Loan)
+levels(ubank1$Personal.Loan)
+```
+
+```{r}
+#Normalize continuous variables used in modeling 
+train_ubank_norm <- train_ubank[,-10]
+validate_ubank_norm <- Validate_ubank [,-10]
+
+norm_values <- preProcess(train_ubank[, -10], method = c ("center", "scale"))
+train_ubank_norm <- predict(norm_values, train_ubank[,-10])
+validate_ubank_norm <- predict(norm_values, Validate_ubank[,-10])
+```
+
+```{r}
+train_predictors <-train_ubank_norm[, -10]
+validate_predictors <- validate_ubank_norm[,-10]
+
+train_labels <-train_ubank_norm[,12]
+validate_labels <- validate_ubank_norm[,12]
+```
+***
+
+
+```{r}
+#Question1
+
+#Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. Perform a k-NN classification with all predictors except ID and ZIP code using k = 1. Remember to transform categorical predictors with more than two categories into dummy variables first.
+
+new.data <- data.frame(Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education.1 = 0, Education.2 = 1, Education.3 = 0, Mortgage = 0, Securities.Account = 0, CD.Account = 0, Online = 1, CreditCard = 1)
+dim(new.data)
+
+#NORMALIZE THE NEW CUSTOMER
+new.data.normalized <- new.data
+new.data.normalized <- predict(norm_values, new.data.normalized)
+
+#NOW, LET'S PREDICT USING KNN INTERPRETATION
+predict_values_q1 <- class:: knn(train = train_ubank_norm,
+                                 test = new.data.normalized,
+                                 cl = train_ubank$Personal.Loan, k = 1)
+predict_values_q1
+
+#The Output below suggests that the model predicts that a person with these criteria would not take out a personal loan.
+```
+
+
+****
+
+```{r}
+#QUESTION 2
+accuracy_df <- data.frame(k = seq(1, 15, 1), overallaccuracy = rep(0,15))
+for (i in 1:15) {
+  knn_pred <- class:: knn(train = train_ubank_norm,
+                          test = validate_ubank_norm,
+                          cl = train_ubank$Personal.Loan, k=i)
+  accuracy_df[i,2] <- confusionMatrix(knn_pred,
+                                      as.factor(Validate_ubank$Personal.Loan), positive = "1")$overall[1]
+  
+}
+which(accuracy_df[,2]== max(accuracy_df[,2]))
+plot(accuracy_df$k, accuracy_df$overallaccuracy)
+```
+
+****
+
+```{r}
+#QUESTION 3
+#CONFUSION MATRIX
+library(gmodels)
+predicted_validate_labels_k5 <- knn(train_predictors, validate_predictors, cl = train_labels, k=5)
+conf_matrix <- CrossTable(x=validate_labels, y=predicted_validate_labels_k5,prop.chisq = FALSE)
+```
+
+```{r}
+#create probability set
+set.seed(1234)
+my_knnprob <-knn(train_predictors, 
+                 validate_predictors,
+                 cl = train_labels, k=1, prob=TRUE)
+class_prob <- attr(my_knnprob, 'prob')
+# See the first rows
+head(my_knnprob)
+```
+
+```{r}
+#Calculating accuracy 
+k1_accuracy <- (conf_matrix$t[2,2] + conf_matrix$t[1,1])/ sum(conf_matrix$t)
+print(k1_accuracy)
+```
+
+```{R}
+#Calculating recall
+k1_recall <- conf_matrix$t[2,2]/ (conf_matrix$t[2,2] + conf_matrix$t[2,1])
+print(k1_recall)
+```
+
+```{r}
+#Calculating Precision
+k1_precision <- conf_matrix$t[2,2]/ (conf_matrix$t[2,2] + conf_matrix$t[1,2])
+print(k1_precision)
+```
+
+```{r}
+#Calculating Specificity
+k1_specificity <- conf_matrix$t[1,1]/ (conf_matrix$t[1,1] + conf_matrix$t[1,2])
+print(k1_specificity)
+##THEREFORE, WWE CAN SAY THAT THE MODEL IS LEARNING WELL
+```
+
+****
+
+```{r}
+predicted_validate_labels_k5 <- knn(train_predictors, validate_predictors, cl = train_labels, k =1)
+CrossTable(x = validate_labels, y = predicted_validate_labels_k5, prop.chisq = FALSE)
+
+PredictedTest_label4 <- knn(train_predictors, validate_predictors, cl=train_labels, k=1)
+CrossTable(x = validate_labels,y = PredictedTest_label4 ,prop.chisq = FALSE)
+```
+
+```{r}
+#question4
+predict_values_q4 <- data.frame(
+  "Age" = 40, 
+  "Experience" = 10, 
+  "Income" = 84, 
+  "Family" = 2, 
+  "CCAvg" = 2, 
+  "Education_1" = 0, 
+  "Education_2" = 1, 
+  "Education_3" = 0, 
+  "Mortgage" = 0, 
+  "Securities Account" = 0, 
+  "CD Account" = 0, 
+  "Online" = 1, 
+  "Credit Card" = 1
+)
+# Set the column names of predict_values_q4 to match train_predictors
+colnames(predict_values_q4) <- colnames(train_predictors)
+predict_values_q4 <- predict_values_q4[,names(train_predictors)]
+knn_prediction_q4 <- knn(train_predictors, predict_values_q4, cl = train_labels, k = 5)
+```
+
+
+```{r}
+#QUESTION5
+#Create Partitioned data sets for training and validation. Use stratified sampling with personal loan to ensure training and validation training sets match to avoid under fitting
+train_index2 <- createDataPartition(ubank1$Personal.Loan, p=.5, list = FALSE)
+train_ubank_Q5 <- ubank1[train_index2,]
+intermediate_ubank_Q5 <- ubank1[-train_index2,]
+
+train_index3 <- createDataPartition(intermediate_ubank_Q5$Personal.Loan, p=.6, list = FALSE)
+validate_ubank_Q5 <- intermediate_ubank_Q5[train_index3,]
+test_ubank_Q5 <- intermediate_ubank_Q5[-train_index3,]
+```
+
+```{r}
+# Normalize the training data using preProcess
+train_ubank_Q5 <- train_ubank_Q5
+validate_ubank_Q5 <- validate_ubank_Q5
+test_ubank_Q5 <- test_ubank_Q5
+norm_values_Q5 <- preProcess(train_ubank_Q5[, c(2:4, 6:7, 11)], method = c("center", "scale"))
+train_ubank_Q5[, c(2:4, 6:7, 11)] <- predict(norm_values_Q5, train_ubank_Q5[, c(2:4, 6:7, 11)])
+
+# Normalize the test data using the same normalization parameters as the training data
+test_ubank_Q5[, c(2:4, 6:7, 11)] <- predict(norm_values_Q5, test_ubank_Q5[, c(2:4, 6:7, 11)])
+
+```
+
+```{r}
+#Create predictors and labels 
+names(train_ubank_Q5)
+train_predictors_Q5 <-train_ubank_Q5[,c(2:4,6:11,13:14)]
+validate_predictors_Q5 <- validate_ubank_Q5[,c(2:4,6:11,13:14)]
+test_predictors_Q5 <- test_ubank_Q5[,c(2:4,6:11,13:14)]
+
+train_labels_Q5 <-train_ubank_Q5[,12]
+validate_labels_Q5 <- validate_ubank_Q5[,12]
+test_labels_Q5 <- test_ubank_Q5[,12]
+```
+
+```{r}
+#CONFUSION MATRIX FOR TRAINING DATA
+predicted_train_labels_Q5 <- knn(train_predictors_Q5, train_predictors_Q5, cl = train_labels_Q5, k = 5)
+conf_matrix0 <- CrossTable(x = train_labels_Q5, y = predicted_train_labels_Q5, prop.chisq = FALSE)
+```
+
+```{r}
+#CALCLATING ACCURACY FOR TRAINING DATA
+k1_accuracy0 <- (conf_matrix0$t[2,2] + conf_matrix0$t[1,1])/ sum(conf_matrix0$t)
+print(k1_accuracy0)
+```
+
+```{r}
+#CALCULATING RECALL FOR TRAINING DATA
+k1_recall0 <- conf_matrix0$t[2,2]/ (conf_matrix0$t[2,2] + conf_matrix0$t[2,1])
+print(k1_recall0)
+```
+
+```{r}
+#CALCULATING PRECISION FOR TRAINING DATA
+k1_precision0 <- conf_matrix0$t[2,2]/ (conf_matrix0$t[2,2] + conf_matrix0$t[1,2])
+print(k1_precision0)
+```
+
+```{r}
+#CALCULATING SPECIFICITY FOR TRAINING DATA
+k1_specificity0 <- conf_matrix0$t[1,1]/ (conf_matrix0$t[1,1] + conf_matrix0$t[1,2])
+print(k1_specificity0)
+```
+
+```{r}
+#CONFUSION MATRIX FOR VALIDATION DATA
+predicted_validate_labels_Q5 <- knn(train_predictors_Q5,validate_predictors_Q5, cl = train_labels_Q5, k = 5)
+conf_matrix1 <- CrossTable(x = validate_labels_Q5, y = predicted_validate_labels_Q5, prop.chisq = FALSE)
+```
+
+```{r}
+#CALCULATING ACCURACY FOR VALIDATION DATA
+k1_accuracy2 <- (conf_matrix1$t[2,2] + conf_matrix1$t[1,1])/ sum(conf_matrix1$t)
+print(k1_accuracy2)
+```
+
+```{r}
+#CALCULATING RECALL FOR VALIDATION DATA
+k1_recall2 <- conf_matrix1$t[2,2]/ (conf_matrix1$t[2,2] + conf_matrix1$t[2,1])
+print(k1_recall2)
+```
+
+```{R}
+#CALCULATING PRECISION FOR VALIDATION DATA
+k1_precision2 <- conf_matrix1$t[2,2]/ (conf_matrix1$t[2,2] + conf_matrix1$t[1,2])
+print(k1_precision2)
+```
+
+```{r}
+#CALCULATING SPECIFICITY FOR VALIDATION DATA
+k1_specificity2 <- conf_matrix1$t[1,1]/ (conf_matrix1$t[1,1] + conf_matrix1$t[1,2])
+print(k1_specificity2)
+```
+
+```{r}
+# Create a new variable for our probability
+set.seed(1234)
+my_knnprob2 <-knn(train_predictors_Q5,
+  validate_predictors_Q5, 
+  cl = train_labels_Q5, k=1, prob=TRUE )
+class_prob2 <-attr(my_knnprob2, 'prob')
+# See the first rows
+head(class_prob2)
+
+```
+
+
+```{r}
+#CONFUSION MATRIX FOR TESTING DATA
+predicted_test_labels_Q5 <- knn(train_predictors_Q5,test_predictors_Q5, cl = train_labels_Q5, k = 5)
+conf_matrix2 <- CrossTable(x = test_labels_Q5, y = predicted_test_labels_Q5, prop.chisq = FALSE)
+```
+
+```{r}
+#CALCULATING ACCURACY FOR TESTING DATA
+k1_accuracy3 <- (conf_matrix2$t[2,2] + conf_matrix2$t[1,1])/ sum(conf_matrix2$t)
+print(k1_accuracy3)
+```
+
+```{r}
+#CALCULATING RECALL FOR TESTING DATA
+k1_recall3 <- conf_matrix2$t[2,2]/ (conf_matrix2$t[2,2] + conf_matrix2$t[2,1])
+print(k1_recall3)
+```
+
+```{r}
+#CALCULATING PRECISION FOR TESTING DATA
+k1_precision3 <- conf_matrix2$t[2,2]/ (conf_matrix2$t[2,2] + conf_matrix2$t[1,2])
+print(k1_precision3)
+```
+
+```{r}
+#CALCULATING SPECIFICITY FOR TESTING DATA
+k1_specificity3 <- conf_matrix2$t[1,1]/ (conf_matrix2$t[1,1] + conf_matrix2$t[1,2])
+print(k1_specificity3)
+```
+
+```{r}
+#Create a new variable for our probability
+set.seed(1234)
+my_knnprob3 <-knn(train_predictors_Q5, 
+                  test_predictors_Q5, 
+                  cl = train_labels_Q5, k = 1, prob = TRUE)
+class_prob3<-attr(my_knnprob3, 'prob')
+# See the first rows
+head(class_prob3)
+```
+
+```{R}
+#In conclusion, the new customer is going to be classify as accepting the personal loan form the Universal
+#Bank from the new marketing campaign.
+#When looking at indicators for model performance we can see that most of these metrics are very close between the test data set and those for validation and training. This would indicate that we did not under fit our data. However, the test data set does perform slightly worse than train and validate data sets. However, given that this difference is so small we can conclude the model was not over fitted. This means that we can have confidence in our parameters and hyper parameters and therefore our models ability to accurately predict a personal loan on unseen sets of data. 
+```
